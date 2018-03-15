@@ -37,7 +37,9 @@ FORCE_REGISTER = False
 
 On initial run:
 ```
-$ certbot certonly --manual --manual-auth-hook /etc/letsencrypt/acme-dns-auth.py --preferred-challenges dns --debug-challenges -d example.org -d \*.example.org
+$ certbot certonly --manual --manual-auth-hook /etc/letsencrypt/acme-dns-auth.py \
+   --preferred-challenges dns --debug-challenges                                 \
+   -d example.org -d \*.example.org
 ```
 Note that the `--debug-challenges` is mandatory here to pause the Certbot execution before asking Let's Encrypt to validate the records and let you to manually add the CNAME records to your main DNS zone.
 
