@@ -8,7 +8,7 @@ Requires Certbot >= 0.10, Python 2.7 and requests library.
 
 ## Installation
 
-1) Install Certbot using instructions at (https://certbot.eff.org)[https://certbot.eff.org]
+1) Install Certbot using instructions at [https://certbot.eff.org](https://certbot.eff.org)
 
 2) Make sure you have the [python-requests](http://docs.python-requests.org/en/master/) library installed.
 
