@@ -18,25 +18,46 @@ $ curl -o /etc/letsencrypt/acme-dns-auth.py https://raw.githubusercontent.com/j
 $ chmod 0700 /etc/letsencrypt/acme-dns-auth.py
 ```
 
-4) Configure the variables in the beginning of the hook script file to point to your acme-dns instance. The only value that you must change is the `ACMEDNS_URL`, other values are optional.
-```
-### EDIT THESE: Configuration values ###
+4) Configure `acme-dns-auth` to point to your acme-dns instance by setting environment variables. The only values that you must set are `ACMEDNSAUTH_URL` (which points to your `acme-dns` instance) and `ACMEDNSAUTH_ENV_VERSION` (which is used to ensure compatibility across upgrades).
 
+The easiest way to do this is by generating setup template using this command:
+
+````
+$ python /etc/letsencrypt/acme-dns-auth.py --setup
+```
+
+That will print out a template that you can customize
+
+```
+# ---------- CUSTOMIZE THE BELOW ----------
+    
+# required settings
+#
 # URL to acme-dns instance
-ACMEDNS_URL = "https://auth.acme-dns.io"
+export ACMEDNSAUTH_URL="https://acme-dns.example.com"
+# used to maintain compatibility across future versions
+export ACMEDNSAUTH_ENV_VERSION="1"
+
+# optional settings
+#
 # Path for acme-dns credential storage
-STORAGE_PATH = "/etc/letsencrypt/acmedns.json"
+export ACMEDNSAUTH_STORAGE_PATH="/etc/letsencrypt/acmedns.json"
 # Whitelist for address ranges to allow the updates from
-# Example: ALLOW_FROM = ["192.168.10.0/24", "::1/128"]
-ALLOW_FROM = []
+# this must be a list encoded as a json string
+# Example: `export ACMEDNSAUTH_ALLOW_FROM='["192.168.10.0/24", "::1/128"]'`
+export ACMEDNSAUTH_ALLOW_FROM='[]'
 # Force re-registration. Overwrites the already existing acme-dns accounts.
-FORCE_REGISTER = False
+export ACMEDNSAUTH_FORCE_REGISTER="False"
+
+# ----------                     ----------
 ```
 
 ## Usage
 
 On initial run:
 ```
+$ export ACMEDNSAUTH_URL="https://acme-dns.example.com"
+$ export ACMEDNSAUTH_ENV_VERSION="1"
 $ certbot certonly --manual --manual-auth-hook /etc/letsencrypt/acme-dns-auth.py \
    --preferred-challenges dns --debug-challenges                                 \
    -d example.org -d \*.example.org
@@ -45,4 +66,16 @@ Note that the `--debug-challenges` is mandatory here to pause the Certbot execut
 
 After adding the prompted CNAME records to your zone(s), wait for a bit for the changes to propagate over the main DNS zone name servers. This takes anywhere from few seconds up to a few minutes, depending on the DNS service provider software and configuration. Hit enter to continue as prompted to ask Let's Encrypt to validate the records.
 
-After the initial run, Certbot is able to automatically renew your certificates using the stored per-domain acme-dns credentials. 
+After the initial run, Certbot is able to automatically renew your certificates using the stored per-domain acme-dns credentials. You will still need to `export` the environment variables before running Certbot.
+
+Whenever you update the script, you should ensure the script is compatible with your existing environment configuration.  You can do check this by invoking the script with a `--version` argument.
+
+````
+$ python /etc/letsencrypt/acme-dns-auth.py --version
+```
+
+If the version has changed, the best way to update your variables is to generate a new template by invoking the script again with `--setup`, and copy/alter your existing setup as needed
+
+````
+$ python /etc/letsencrypt/acme-dns-auth.py --setup
+```
