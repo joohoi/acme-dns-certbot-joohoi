@@ -1,8 +1,19 @@
 #!/usr/bin/env python
-import json
+import json as JSON
 import os
-import requests
 import sys
+
+# python 2/3 compatibility
+try:
+    import urlparse
+    from urllib import urlencode
+    import urllib2
+    import httplib
+except ImportError:
+    import urllib.parse as urlparse
+    from urllib.parse import urlencode
+    import urllib.request as urllib2
+    import http.client as httplib
 
 ### EDIT THESE: Configuration values ###
 
@@ -40,10 +51,10 @@ class AcmeDnsClient(object):
         if allowfrom:
             # Include whitelisted networks to the registration call
             reg_data = {"allowfrom": allowfrom}
-            res = requests.post(self.acmedns_url+"/register",
-                                data=json.dumps(reg_data))
+            res = post(self.acmedns_url+"/register",
+                                data=JSON.dumps(reg_data))
         else:
-            res = requests.post(self.acmedns_url+"/register")
+            res = post(self.acmedns_url+"/register")
         if res.status_code == 201:
             # The request was successful
             return res.json()
@@ -60,9 +71,9 @@ class AcmeDnsClient(object):
         headers = {"X-Api-User": account['username'],
                    "X-Api-Key": account['password'],
                    "Content-Type": "application/json"}
-        res = requests.post(self.acmedns_url+"/update",
+        res = post(self.acmedns_url+"/update",
                             headers=headers,
-                            data=json.dumps(update))
+                            data=JSON.dumps(update))
         if res.status_code == 200:
             # Successful update
             return
@@ -73,9 +84,9 @@ class AcmeDnsClient(object):
                    "------- Request body:\n{}\n"
                    "------- Response HTTP status: {}\n"
                    "------- Response body: {}")
-            s_headers = json.dumps(headers, indent=2, sort_keys=True)
-            s_update = json.dumps(update, indent=2, sort_keys=True)
-            s_body = json.dumps(res.json(), indent=2, sort_keys=True)
+            s_headers = JSON.dumps(headers, indent=2, sort_keys=True)
+            s_update = JSON.dumps(update, indent=2, sort_keys=True)
+            s_body = JSON.dumps(res.json(), indent=2, sort_keys=True)
             print(msg.format(s_headers, s_update, res.status_code, s_body))
             sys.exit(1)
 
@@ -97,7 +108,7 @@ class Storage(object):
                 print("ERROR: Storage file exists but cannot be read")
                 sys.exit(1)
         try:
-            data = json.loads(filedata)
+            data = JSON.loads(filedata)
         except ValueError:
             if len(filedata) > 0:
                 # Storage file is corrupted
@@ -107,7 +118,7 @@ class Storage(object):
 
     def save(self):
         """Saves the storage content to disk"""
-        serialized = json.dumps(self._data)
+        serialized = JSON.dumps(self._data)
         try:
             with os.fdopen(os.open(self.storagepath,
                                    os.O_WRONLY | os.O_CREAT, 0o600), 'w') as fh:
@@ -131,6 +142,92 @@ class Storage(object):
             return self._data[key]
         except KeyError:
             return None
+
+class RequestResponse(object):
+    """
+    Request response object that wraps urllib2 response object to mimic requests library.
+    """
+
+    def __init__(self, request, response):
+        self.request = request
+        self.status_code = response.getcode()
+        self.url = response.geturl()
+        self.headers = dict(response.info())
+        self.text = response.read()
+
+        self._json = None
+
+        response.close()
+
+    def __getitem__(self, key):
+        if not self._json:
+            return self.json()[key]
+
+    def json(self):
+        if not self._json:
+            self._json = JSON.loads(self.text)
+        return self._json
+
+    def keys(self):
+        if not self._json:
+            return self.json().keys()
+
+
+def base_request(method, url, params=None, headers=None, data=None, json=None):
+    # process url
+    if params:
+        query = urlencode(params)
+        url += "?" + query
+
+    # default headers
+    _headers = {
+        "Accept": "*/*"
+    }
+
+    # process data
+    if data:
+        data = urlencode(data)
+
+    if json:
+        _headers["Content-Type"] = "application/json"
+        data = JSON.dumps(json)
+
+    # process headers
+    if headers:
+        _headers.update(headers)
+    
+    # get request obj
+    if data:
+        request_obj = urllib2.Request(url, data=data, headers=_headers)
+    else:
+        request_obj = urllib2.Request(url, headers=_headers)
+
+    # process method
+    request_obj.get_method = lambda: method
+
+    # make http(s) connection
+    try:
+        response = urllib2.urlopen(request_obj)
+    except urllib2.HTTPError as e:
+        return RequestResponse(request_obj, e)
+
+    return RequestResponse(request_obj, response)
+
+
+def get(url, params=None, headers=None, data=None, json=None):
+    return base_request("GET", url, params=params, headers=headers, data=data, json=json)
+
+
+def post(url, params=None, headers=None, data=None, json=None):
+    return base_request("POST", url, params=params, headers=headers, data=data, json=json)
+
+
+def delete(url, params=None, headers=None, data=None, json=None):
+    return base_request("DELETE", url, params=params, headers=headers, data=data, json=json)
+
+
+def put(url, params=None, headers=None, data=None, json=None):
+    return base_request("PUT", url, params=params, headers=headers, data=data, json=json)
 
 if __name__ == "__main__":
     # Init
