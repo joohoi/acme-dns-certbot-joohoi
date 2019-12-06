@@ -4,26 +4,28 @@ import os
 import requests
 import sys
 
-### EDIT THESE: Configuration values ###
+
+### you will likely prefer to use environment variables ###
+### however you can edit these if you prefer ###
 
 # URL to acme-dns instance
-ACMEDNS_URL = "https://auth.acme-dns.io"
+ACMEDNS_URL = os.environ.get("ACMEDNSAUTH_URL", None)
+# used to maintain compatibility across future versions
+ENV_VERSION = os.environ.get("ACMEDNSAUTH_ENV_VERSION", None)
 # Path for acme-dns credential storage
-STORAGE_PATH = "/etc/letsencrypt/acmedns.json"
+STORAGE_PATH = os.environ.get("ACMEDNSAUTH_STORAGE_PATH",
+                              "/etc/letsencrypt/acmedns.json")
 # Whitelist for address ranges to allow the updates from
 # Example: ALLOW_FROM = ["192.168.10.0/24", "::1/128"]
-ALLOW_FROM = []
+# if customized on the commandline, this must be a list encoded as a json string
+# Example: `export ACMEDNSAUTH_ALLOW_FROM='["192.168.10.0/24", "::1/128"]'`
+ALLOW_FROM = os.environ.get("ACMEDNSAUTH_ALLOW_FROM", [])
 # Force re-registration. Overwrites the already existing acme-dns accounts.
-FORCE_REGISTER = False
+FORCE_REGISTER = os.environ.get("ACMEDNSAUTH_FORCE_REGISTER", False)
+
 
 ###   DO NOT EDIT BELOW THIS POINT   ###
 ###         HERE BE DRAGONS          ###
-
-DOMAIN = os.environ["CERTBOT_DOMAIN"]
-if DOMAIN.startswith("*."):
-    DOMAIN = DOMAIN[2:]
-VALIDATION_DOMAIN = "_acme-challenge."+DOMAIN
-VALIDATION_TOKEN = os.environ["CERTBOT_VALIDATION"]
 
 
 class AcmeDnsClient(object):
@@ -132,7 +134,79 @@ class Storage(object):
         except KeyError:
             return None
 
+
+def template_new(env_version):
+    templated = """
+# ---------- CUSTOMIZE THE BELOW ----------
+
+# required settings
+#
+# URL to acme-dns instance
+export ACMEDNSAUTH_URL="https://acme-dns.example.com"
+# used to maintain compatibility across future versions
+export ACMEDNSAUTH_ENV_VERSION="%(env_version)s"
+
+# optional settings
+#
+# Path for acme-dns credential storage
+export ACMEDNSAUTH_STORAGE_PATH="/etc/letsencrypt/acmedns.json"
+# Whitelist for address ranges to allow the updates from
+# this must be a list encoded as a json string
+# Example: `export ACMEDNSAUTH_ALLOW_FROM='["192.168.10.0/24", "::1/128"]'`
+export ACMEDNSAUTH_ALLOW_FROM='[]'
+# Force re-registration. Overwrites the already existing acme-dns accounts.
+export ACMEDNSAUTH_FORCE_REGISTER="False"
+
+# ----------                     ----------
+""" % {'env_version': env_version, }
+    print(templated)
+
+
 if __name__ == "__main__":
+
+    # this may be used in the future to handle compatibility concerns
+    ENV_VERSION__CURRENT = 1
+    ENV_VERSION__MINMAX = (1, 1)
+
+    if len(sys.argv) == 2:
+        if sys.argv[1] == '--version':
+            print("The current ENV_VERSION/ACMEDNSAUTH_ENV_VERSION is: %s" % ENV_VERSION__CURRENT)
+            print("This script is compatible with versions: %s-%s" % ENV_VERSION__MINMAX)
+            sys.exit(1)
+        if sys.argv[1] == '--setup':
+            template_new(ENV_VERSION__CURRENT)
+            sys.exit(1)
+
+    # validation/coercion : BEGIN
+    if not ACMEDNS_URL:
+        raise ValueError("`ACMEDNS_URL` or the environment variable "
+                         "`ACMEDNSAUTH_URL` must be set")
+    if ENV_VERSION is None:
+        raise ValueError("`ENV_VERSION` or the environment variable "
+                         "`ACMEDNSAUTH_ENV_VERSION` must be set. "
+                         "The current version is %s" % ENV_VERSION__CURRENT)
+    ENV_VERSION = int(ENV_VERSION)
+    if not isinstance(ALLOW_FROM, list):
+        try:
+            ALLOW_FROM = json.loads(ALLOW_FROM)
+            if not isinstance(ALLOW_FROM, list):
+                raise ValueError()
+        except:
+            raise ValueError("ALLOW_FROM must be a list")
+    if not isinstance(FORCE_REGISTER, bool):
+        if FORCE_REGISTER.lower() in ('true', '1'):
+            FORCE_REGISTER = True
+        else:
+            FORCE_REGISTER = False
+    # validation/coercion : END
+
+    # resume original script
+    DOMAIN = os.environ["CERTBOT_DOMAIN"]
+    if DOMAIN.startswith("*."):
+        DOMAIN = DOMAIN[2:]
+    VALIDATION_DOMAIN = "_acme-challenge."+DOMAIN
+    VALIDATION_TOKEN = os.environ["CERTBOT_VALIDATION"]
+
     # Init
     client = AcmeDnsClient(ACMEDNS_URL)
     storage = Storage(STORAGE_PATH)
